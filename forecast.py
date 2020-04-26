@@ -21,7 +21,7 @@ def prepare_data(data_names):
     names = list(data_ready.columns)[1 : ]
     for name in names:
         data_ready[name] = data_ready[name].str.replace('.', '')
-        data_ready[name] = data_ready[name].str.replace(',', '.')
+        data_ready[name] = pd.to_numeric(data_ready[name].str.replace(',', '.'))
     data_ready.to_csv("ALL_DATA.csv")
     return data_ready
 
@@ -33,7 +33,7 @@ def visualise_data(data):
     print(data.head())
     for name in names:
         ax.append(fig.add_subplot(2, 5, names.index(name) + 1, title = name))
-        sns.lineplot(data = pd.to_numeric(data[name]), ax = ax[names.index(name)]) # через pd.reaplace()
+        sns.lineplot(data = data[name], ax = ax[names.index(name)]) # через pd.reaplace()
 
     plt.show()
     fig.savefig("Visualisation.png")
