@@ -47,12 +47,15 @@ def visualise_data(data):
     data.drop(['Дата'], axis = 1).corr().to_csv("CORRELATION.csv")
 
 def visualise_corr(data):
-    fig = plt.figure(figsize = (19, 8), num = 'Datasets correlation')
+    fig = plt.figure(figsize = (21, 8), num = 'Datasets correlation')
     ax = []
     names = list(data.columns)[1 : -1]
+    print(data.head())
     for name in names:
-        ax.append(fig.add_subplot(2, 5, names.index(name) + 1, title = name))
-        sns.lineplot(data = data[name], ax = ax[names.index(name)])
+        ax.append(fig.add_subplot(2, 4, names.index(name) + 1))
+        sns.regplot(x = data['USD_RUB_rates'], y = data[name], data = data[name], ax = ax[names.index(name)])
+    plt.show()
+    fig.savefig("Datasets_correlation.png")
 
 def data_train_test(df):
     df.drop(['Дата'], axis = 1, inplace = True)
@@ -75,6 +78,7 @@ all_data['Brent_prices'] = pd.Series(np.ones(len(all_data['Дата'])) / all_da
 all_data['MOEX_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['MOEX_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['RTS_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['RTS_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
 visualise_data(all_data)
+visualise_corr(all_data)
 X, y = data_train_test(all_data)
 #print(X)
 #print(y)
