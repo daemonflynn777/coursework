@@ -54,6 +54,7 @@ def visualise_corr(data):
     for name in names:
         ax.append(fig.add_subplot(2, 4, names.index(name) + 1))
         sns.regplot(x = data['USD_RUB_rates'], y = data[name], data = data[name], ax = ax[names.index(name)])
+    plt.subplots_adjust(wspace = 0.3)
     plt.show()
     fig.savefig("Datasets_correlation.png")
 
