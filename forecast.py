@@ -2,9 +2,16 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pycaret as pc
+import xgboost as xgb
 
-from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge, Lasso
 from sklearn.neighbors import KNeighborsRegressor
+from sklearn.neural_network import MLPRegressor
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import ShuffleSplit
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
 
 def prepare_data(data_names):
     for name in data_names:
@@ -53,7 +60,7 @@ def visualise_corr(data):
     print(data.head())
     for name in names:
         ax.append(fig.add_subplot(2, 4, names.index(name) + 1))
-        sns.regplot(x = data['USD_RUB_rates'], y = data[name], data = data[name], ax = ax[names.index(name)])
+        sns.regplot(x = 'USD_RUB_rates', y = name, data = data, ax = ax[names.index(name)])
     plt.subplots_adjust(wspace = 0.3)
     plt.show()
     fig.savefig("Datasets_correlation.png")
@@ -64,6 +71,31 @@ def data_train_test(df):
     df_y = df.to_numpy()[ : , -1 : ].reshape(1, df.shape[0])
     return df_x, df_y[0]
 
+def xgb_forecasting(data_x, data_y):
+    dtrain = xgb.DMatrix(data_x, label = data_y)
+    xgb_model = xgb.XGBRegressor(lear_rate = 0.1, nthread = -1, random_state = 0)
+    cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
+    xgb_gs = GridSearchCV(
+             xgb_model,
+             {
+                'n_estimators': [125],
+                'max_depth': [3],
+                'booster': ['gbtree', 'gblinear'],
+                'gamma': np.linspace(0.00005, 0.0001, num = 5),
+                'reg_alpha': np.linspace(0.0001, 0.001, num = 3),
+                'reg_lambda': np.linspace(0.0001, 0.001, num = 3)
+             },
+             scoring = 'r2', # neg_mean_squared_error
+             n_jobs = -1,
+             cv = cv_gen
+             )
+    xgb_gs.fit(data_x[1 : ], data_y[1 : ])
+    print(xgb_gs.best_params_)
+    print("r2 score",xgb_gs.best_score_)
+    y_pred = xgb_gs.best_estimator_.predict(data_x[ : 1])
+    print("Predicted", y_pred)
+    print("Real", data_y[ : 1])
+
 
 
 # INDEXES: DXY, Dow Jones, FTSE 100, MSCI ACWI, мб S&P + русские
@@ -73,14 +105,15 @@ datasets = []
 names = ["Brent_prices", "ACWI_indexes", "Dow_Jones_indexes",
          "DXY_indexes", "FTSE_100_indexes", "MOEX_indexes", "RTS_indexes", "SPX_indexes"]
 
-all_data = prepare_data(names)
-#all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
+#all_data = prepare_data(names)
+all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
 all_data['Brent_prices'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['Brent_prices'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['MOEX_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['MOEX_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['RTS_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['RTS_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
-visualise_data(all_data)
-visualise_corr(all_data)
+#visualise_data(all_data)
+#visualise_corr(all_data)
 X, y = data_train_test(all_data)
+xgb_forecasting(X, y)
 #print(X)
 #print(y)
 #all_data.corr().to_csv("CORRELATION.csv")
