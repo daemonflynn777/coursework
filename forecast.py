@@ -21,7 +21,8 @@ def prepare_data(data_names):
     for i in range(len(datasets)):
         clmn = datasets[i].columns.tolist()
         start_date_index = list(datasets[i]['Дата']).index('01.10.2010') # previous date 01.02.2010
-        end_date_index = list(datasets[i]['Дата']).index('01.10.2014') # previous date 01.02.2014
+        #mid_date_index = list(datasets[i]['Дата']).index('01.10.2014') # previous date 01.02.2014
+        end_date_index = list(datasets[i]['Дата']).index('01.10.2018')
         data = {clmn[0]: datasets[i][clmn[0]][end_date_index : start_date_index + 1], clmn[1]: datasets[i][clmn[1]][end_date_index : start_date_index + 1]}
         datasets[i] = pd.DataFrame(data)
     data_ready = datasets[0].copy()
@@ -33,8 +34,12 @@ def prepare_data(data_names):
     for name in names:
         data_ready[name] = data_ready[name].str.replace('.', '')
         data_ready[name] = pd.to_numeric(data_ready[name].str.replace(',', '.'))
+    data_test = data_ready.iloc[list(data_ready['Дата']).index('01.10.2014') : ]
+    data_ready = data_ready.iloc[ : list(data_ready['Дата']).index('01.10.2014') + 1]
+    data_test.index = range(len(data_test['Дата']))
     data_ready.to_csv("ALL_DATA.csv")
-    return data_ready
+    data_test.to_csv("TEST_DATA.csv")
+    return data_ready, data_test
 
 def visualise_data(data):
     fig = plt.figure(figsize = (19, 8), num = 'Datasets visualisation')
@@ -93,8 +98,14 @@ def xgb_forecasting(data_x, data_y):
     print(xgb_gs.best_params_)
     print("r2 score",xgb_gs.best_score_)
     y_pred = xgb_gs.best_estimator_.predict(data_x[ : 1])
+    #y_pred = xgb_gs.best_estimator_.predict(X_test[300].reshape(1, X_test.shape[1]))
     print("Predicted", y_pred)
     print("Real", data_y[ : 1])
+    #print("Real", y_test[300])
+
+def sklearn_forecasting(mdls):
+    return 0
+
 
 
 
@@ -105,15 +116,35 @@ datasets = []
 names = ["Brent_prices", "ACWI_indexes", "Dow_Jones_indexes",
          "DXY_indexes", "FTSE_100_indexes", "MOEX_indexes", "RTS_indexes", "SPX_indexes"]
 
-#all_data = prepare_data(names)
-all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
+all_data, test_data = prepare_data(names)
+#all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
+#test_data = pd.read_csv('TEST_DATA.csv', index_col = 0)
+
 all_data['Brent_prices'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['Brent_prices'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['MOEX_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['MOEX_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['RTS_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['RTS_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
-#visualise_data(all_data)
-#visualise_corr(all_data)
+test_data['Brent_prices'] = pd.Series(np.ones(len(test_data['Дата'])) / test_data['Brent_prices'].to_numpy().reshape(1, test_data.shape[0])[0])
+test_data['MOEX_indexes'] = pd.Series(np.ones(len(test_data['Дата'])) / test_data['MOEX_indexes'].to_numpy().reshape(1, test_data.shape[0])[0])
+test_data['RTS_indexes'] = pd.Series(np.ones(len(test_data['Дата'])) / test_data['RTS_indexes'].to_numpy().reshape(1, test_data.shape[0])[0])
+
+#visualise_data(test_data)
+#visualise_corr(test_data)
+#print(test_data['RTS_indexes'])
+
 X, y = data_train_test(all_data)
-xgb_forecasting(X, y)
+X_test, y_test = data_train_test(test_data)
+
+#xgb_forecasting(X, y)
+
+models = []
+models.append(LinearRegression(normalize = True, copy_X = True, n_jobs = -1))
+models.append(LogisticRegression(n_jobs = -1))
+models.append(Ridge())
+models.append(Lasso())
+models.append(KNeighborsRegressor())
+models.append(MLPRegressor())
+print(len(models))
+
 #print(X)
 #print(y)
 #all_data.corr().to_csv("CORRELATION.csv")
