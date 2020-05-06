@@ -104,6 +104,20 @@ def xgb_forecasting(data_x, data_y):
     #print("Real", y_test[300])
 
 def sklearn_forecasting(mdls, prms, data_x, data_y):
+    data_y = data_y.astype('float')
+    print(data_y)
+    bst_params = []
+    bst_score = []
+    bst_estimator = []
+    cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
+    #for i in range(len(mdls)):
+    model_gs = GridSearchCV(mdls[5], prms[5], scoring = 'r2', n_jobs = -1, cv = cv_gen)
+    model_gs.fit(data_x[ : -1], data_y[ : -1])
+    bst_params.append(model_gs.best_params_)
+    bst_score.append(model_gs.best_score_)
+    bst_estimator.append(model_gs.best_estimator_)
+    print(bst_score)
+
     return 0
 
 
@@ -134,24 +148,25 @@ test_data['RTS_indexes'] = pd.Series(np.ones(len(test_data['Дата'])) / test_
 X, y = data_train_test(all_data)
 X_test, y_test = data_train_test(test_data)
 
-xgb_forecasting(X, y)
+#xgb_forecasting(X, y)
 
 models = []
 models.append(LinearRegression(copy_X = True, n_jobs = -1))
 models.append(LogisticRegression(n_jobs = -1, class_weight = 'balanced', random_state = 0))
-models.append(Ridge(copy_x = True, random_state = 0))
+models.append(Ridge(copy_X = True, random_state = 0))
 models.append(Lasso(copy_X = True, random_state = 0))
 models.append(KNeighborsRegressor(n_jobs = -1))
 models.append(MLPRegressor(random_state = 0))
 
+
+#'l1_ratio' : np.linspace(0.0, 1.0, num = 5)
 params = []
 params.append({'fit_intercept' : [True, False], 'normalize' : [True, False]}) # params for Linear Regression
-params.append({'penalty' : ['l1', 'l2', 'elasticnet', 'none'], 'dual' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5), 'C' : np.linspace(0.1, 2.0, num = 10),
-               'fit_intercept' : [True, False], 'solver' : ['newton-cg', 'lbfgs', 'liblinear', 'sag','saga'], 'max_iter': [100, 125, 150, 175, 200], 'multi_class' : ['auto', 'ovr', 'multinominal'],
-               'l1_ratio' : np.linspace(0.0, 1.0, num = 5)})
+params.append({'penalty' : ['l2'], 'dual' : [False], 'tol' : np.linspace(0.00001, 0.0001, num = 5), 'C' : np.linspace(0.1, 2.0, num = 10),
+               'fit_intercept' : [False], 'solver' : ['newton-cg', 'lbfgs', 'sag'], 'max_iter': [100, 125, 150, 175, 200], 'multi_class' : ['auto', 'ovr', 'multinominal']})
 params.append({'alpha' : np.linspace(0.1, 2.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
                'solver' : ['auto', 'svd', 'cholesky', 'lsqr', 'sparce_cg', 'sag', 'saga']})
-params.append({'alpha' : np.linspace(1.0, 5.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False]. 'precompute' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5)})
+params.append({'alpha' : np.linspace(1.0, 5.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'precompute' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5)})
 params.append({'n_neighbors' : [5, 10, 15, 20], 'weights' : ['uniform', 'distance'], 'algorithm' : ['ball_tree', 'kd_tree', 'brute'], 'leaf_size' : [30, 45, 60, 75, 90], 'p' : np.linspace(1, 5, num = 6)})
 
 params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver' : ['lbfgs', 'sgd', 'adam'], 'alpha' : np.linspace(0.00005, 0.0002, num = 6), 'learnong_rate' : ['constant', 'invscaling', 'adaptive'],
@@ -159,7 +174,7 @@ params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver'
                'momentum' : np.linspace(0.1, 1.0, num = 10), 'nesterovs_momentum' : [True, False], 'early_stopping' : [True, False], 'validation_fraction' : np.linspace(0.1, 0.3, num = 5),
                'beta_1' : np.linspace(0.7, 1.0, num = 5, endpoint = False), 'beta_2' : np.linspace(0.95, 1.0, num = 5)})
 
-sklearn_forecasting(models)
+sklearn_forecasting(models, params, X, y)
 
 #print(X)
 #print(y)
