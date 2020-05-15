@@ -8,10 +8,13 @@ import xgboost as xgb
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge, Lasso
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import ShuffleSplit
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
 def prepare_data(data_names):
     for name in data_names:
@@ -103,6 +106,9 @@ def xgb_forecasting(data_x, data_y):
     print("Real", data_y[ : 1])
     #print("Real", y_test[300])
 
+def feature_data(feature):
+    return 0
+
 def sklearn_forecasting(mdls, prms, data_x, data_y):
     data_y = data_y.astype('float')
     print(data_y)
@@ -111,7 +117,7 @@ def sklearn_forecasting(mdls, prms, data_x, data_y):
     bst_estimator = []
     cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
     #for i in range(len(mdls)):
-    model_gs = GridSearchCV(mdls[4], prms[4], scoring = 'r2', n_jobs = -1, cv = cv_gen)
+    model_gs = GridSearchCV(mdls[5], prms[5], scoring = 'r2', n_jobs = -1, cv = cv_gen)
     model_gs.fit(data_x[ : -1], data_y[ : -1])
     bst_params.append(model_gs.best_params_)
     bst_score.append(model_gs.best_score_)
@@ -120,7 +126,21 @@ def sklearn_forecasting(mdls, prms, data_x, data_y):
 
     return 0
 
+def time_series_diff(series):
+    return np.array([series[i + 1] - series[i] for i in range(len(series) - 1)])
 
+def arima_forecasting(features):
+    for feature in features.transpose():
+        print(feature)
+        adf_stat, adf_crit_val = adfuller(feature, regression = 'ct')[1], adfuller(feature, regression = 'ct')[4][1]
+        int_degree = 0
+        while adf_stat >= adf_crit_val:
+            adf_stat, adf_crit_val = adfuller(feature.diff(), regression = 'ct')[1], adfuller(feature.diff(), regression = 'ct')[4][1]
+            int_degree += 1
+        print("Time series is stationary")
+
+
+    return 0
 
 
 # INDEXES: DXY, Dow Jones, FTSE 100, MSCI ACWI, мб S&P + русские
@@ -156,7 +176,8 @@ models.append(LinearRegression(copy_X = True, n_jobs = -1))
 models.append(Ridge(copy_X = True, random_state = 0))
 models.append(Lasso(copy_X = True, random_state = 0))
 models.append(KNeighborsRegressor(n_jobs = -1))
-models.append(MLPRegressor(random_state = 0))
+models.append(MLPRegressor(hidden_layer_sizes = (50, 50, 50), random_state = 0))
+models.append(RandomForestRegressor(n_jobs = -1, random_state = 0))
 
 
 #'l1_ratio' : np.linspace(0.0, 1.0, num = 5)
@@ -169,10 +190,18 @@ params.append({'alpha' : np.linspace(0.1, 2.0, num = 10), 'fit_intercept' : [Tru
 params.append({'alpha' : np.linspace(1.0, 5.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'precompute' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5)})
 params.append({'n_neighbors' : [5, 10, 15, 20], 'weights' : ['uniform', 'distance'], 'algorithm' : ['ball_tree', 'kd_tree', 'brute'], 'leaf_size' : [30, 45, 60, 75, 90], 'p' : np.linspace(1, 5, num = 6)})
 
-params.append({'activation' : ['logistic'], 'solver' : ['lbfgs'], 'alpha' : [0.00005, 0.0001, 0.0002], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
-               'early_stopping' : [True], 'validation_fraction' : np.linspace(0.1, 0.3, num = 5)})
+#params.append({'activation' : ['logistic'], 'solver' : ['lbfgs'], 'alpha' : [0.00005, 0.0001, 0.0002], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
+#               'early_stopping' : [True], 'validation_fraction' : np.linspace(0.1, 0.3, num = 5)})
+params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver' : ['adam'], 'learning_rate' : ['constant'],
+               'learning_rate_init' : np.linspace(0.0005, 0.002, num = 3), 'max_iter' : [1000, 5000, 10000]})
+#'beta_1' : np.linspace(0.7, 1.0, num = 5, endpoint = False), 'beta_2' : np.linspace(0.95, 1.0, num = 5)
+#'power_t' : np.linspace(0.45, 0.55, num = 3),
+#'momentum' : np.linspace(0.85, 0.95, num = 5), 'nesterovs_momentum' : [True, False]
 
-sklearn_forecasting(models, params, X, y)
+params.append({'n_estimators' : [100, 125, 150, 175], 'max_depth' : [3, 7, 15], 'max_features' : ['auto', 'sqrt', 'log2']})
+#sklearn_forecasting(models, params, X, y)
+
+print(time_series_diff(X.transpose()[1]))
 
 #print(X)
 #print(y)
