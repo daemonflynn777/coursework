@@ -9,12 +9,14 @@ from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge, La
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import RandomForestRegressor
+from statsmodels.tsa.arima_model import ARIMA
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import ShuffleSplit
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from itertools import product
 
 def prepare_data(data_names):
     for name in data_names:
@@ -130,15 +132,47 @@ def time_series_diff(series):
     return np.array([series[i + 1] - series[i] for i in range(len(series) - 1)])
 
 def arima_forecasting(features):
+    forecasted_features = []
     for feature in features.transpose():
         print(feature)
+        feature_len = len(feature)
+        cv_split = int(feature_len*0.8)
+        feature_train = feature[ : cv_split]
+        feature_test = feature[cv_split : ]
         adf_stat, adf_crit_val = adfuller(feature, regression = 'ct')[1], adfuller(feature, regression = 'ct')[4][1]
         int_degree = 0
         while adf_stat >= adf_crit_val:
-            adf_stat, adf_crit_val = adfuller(feature.diff(), regression = 'ct')[1], adfuller(feature.diff(), regression = 'ct')[4][1]
+            feature = feature.diff()
+            adf_stat, adf_crit_val = adfuller(feature, regression = 'ct')[1], adfuller(feature, regression = 'ct')[4][1]
             int_degree += 1
         print("Time series is stationary")
-
+        fig = plt.figure(figsize = (8, 8), num = 'ACF and PACF')
+        ax = []
+        ax.append(fig.add_subplot(2, 1, 1))
+        plot_acf(feature, ax = ax[0])
+        ax.append(fig.add_subplot(2, 1, 2))
+        plot_pacf(feature, ax = ax[1])
+        acf_coef = input("Enter ACF coefficent: ") # MA part of time series, parameter "q"
+        pacf_coef = input("Enter PACF coefficent: ") # AR part of time series, parameter "p"
+        parameters = product(pacf_coef, acf_coef)
+        parameters_list = list(parameters)
+        model_score = model_score_best = q_best = p_best = 0 # Maybe use AIC later
+        for params in parameters_list:
+            print("Testing ARIMA (%d,%d,%d)", params[0], int_degree, params[1])
+            model = ARIMA(feature_train, order = (params[0], int_degree, params[1]))
+            model_fit = model.fit(disp = 0)
+            forecast = model_fit.forecast(steps = feature_len - cv_split)
+            model_score = r2_score(feature_test, forecast[0])
+            if model_score > model_score_best:
+                model_score_best = model_score
+                p_best = params[0]
+                q_best = params[1]
+        print("The best model by r2_score is ARIMA(%d,%d,%d)", p_best, int_degree, q_best)
+        model = ARIMA(feature, order = (p_best, int_degree, q_best))
+        model_fit = model.fit(disp = 0)
+        forecast = model_fit.forecast(steps = 1)
+        forecasted_features.append(forecast[0][0])
+    print("All features have been forecasted")
 
     return 0
 
