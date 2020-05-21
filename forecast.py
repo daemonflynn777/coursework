@@ -133,48 +133,74 @@ def time_series_diff(series):
 
 def arima_forecasting(features):
     forecasted_features = []
-    for feature in features.transpose():
-        print(feature)
+    features = np.transpose(features)
+    for feature in features:
+        #print(feature)
         feature_len = len(feature)
-        cv_split = int(feature_len*0.8)
+        cv_split = int(feature_len*0.85)
         feature_train = feature[ : cv_split]
         feature_test = feature[cv_split : ]
-        adf_stat, adf_crit_val = adfuller(feature, regression = 'ct')[1], adfuller(feature, regression = 'ct')[4][1]
+        feature_forecast = feature_train
+
+        #adf_res = adfuller(feature, regression = 'ct')
+        #adf_stat = adf_res[1]
+        #adf_crit_val = list(adf_res[4].values())[1]
+        #adf_crit_val = adf_res[4]["5%"]
+        #print(adf_crit_val)
+
+        adf_stat, adf_crit_val = adfuller(feature, regression = 'ctt')[0], adfuller(feature, regression = 'ctt')[4]["5%"]
         int_degree = 0
         while adf_stat >= adf_crit_val:
-            feature = feature.diff()
-            adf_stat, adf_crit_val = adfuller(feature, regression = 'ct')[1], adfuller(feature, regression = 'ct')[4][1]
+            print(adf_stat, adf_crit_val)
+
+            #fig = plt.figure(figsize = (8, 4))
+            #ft = plt.plot(feature)
+            #lt.legend()
+            #lt.grid(linewidth = 1)
+            #plt.title('Feature', fontsize = 'xx-large')
+            #lt.show()
+
+            #print(len(feature))
+            feature = np.diff(feature)
+            adf_stat, adf_crit_val = adfuller(feature, regression = 'ctt')[0], adfuller(feature, regression = 'ctt')[4]["5%"]
             int_degree += 1
-        print("Time series is stationary")
+        print("Time series is stationary with d = ", int_degree)
         fig = plt.figure(figsize = (8, 8), num = 'ACF and PACF')
         ax = []
         ax.append(fig.add_subplot(2, 1, 1))
         plot_acf(feature, ax = ax[0])
         ax.append(fig.add_subplot(2, 1, 2))
         plot_pacf(feature, ax = ax[1])
-        acf_coef = input("Enter ACF coefficent: ") # MA part of time series, parameter "q"
-        pacf_coef = input("Enter PACF coefficent: ") # AR part of time series, parameter "p"
-        parameters = product(pacf_coef, acf_coef)
+        plt.show()
+        acf_coef = int(input("Enter ACF coefficent: ")) # MA part of time series, parameter "q"
+        pacf_coef = int(input("Enter PACF coefficent: ")) # AR part of time series, parameter "p"
+        parameters = product(range(pacf_coef + 1), range(acf_coef + 1))
         parameters_list = list(parameters)
         model_score = model_score_best = q_best = p_best = 0 # Maybe use AIC later
         for params in parameters_list:
-            print("Testing ARIMA (%d,%d,%d)", params[0], int_degree, params[1])
-            model = ARIMA(feature_train, order = (params[0], int_degree, params[1]))
-            model_fit = model.fit(disp = 0)
-            forecast = model_fit.forecast(steps = feature_len - cv_split)
-            model_score = r2_score(feature_test, forecast[0])
+            print("Testing ARIMA (%d,%d,%d)" % (params[0], int_degree, params[1]))
+            forecasted = []
+            for iter in range(len(feature_test)):
+                model = ARIMA(feature_train, order = (params[0], int_degree, params[1]))
+                model_fit = model.fit(disp = 0)
+                forecast_step = model_fit.forecast()[0]
+                forecasted.append(forecast_step)
+                #feature_train = np.array(list(feature_train).append(forecast_step))
+                #print(feature_train)
+                feature_train = np.append(feature_train, feature_test[iter])
+            model_score = r2_score(feature_test, forecasted)
+            print(model_score)
             if model_score > model_score_best:
                 model_score_best = model_score
                 p_best = params[0]
                 q_best = params[1]
-        print("The best model by r2_score is ARIMA(%d,%d,%d)", p_best, int_degree, q_best)
-        model = ARIMA(feature, order = (p_best, int_degree, q_best))
+        print("The best model by r2_score is ARIMA(%d,%d,%d) with r2_score of %f" % (p_best, int_degree, q_best, model_score_best))
+        model = ARIMA(feature_forecast, order = (p_best, int_degree, q_best))
         model_fit = model.fit(disp = 0)
-        forecast = model_fit.forecast(steps = 1)
+        forecast = model_fit.forecast()
         forecasted_features.append(forecast[0][0])
     print("All features have been forecasted")
-
-    return 0
+    return forecasted_features
 
 
 # INDEXES: DXY, Dow Jones, FTSE 100, MSCI ACWI, мб S&P + русские
@@ -184,9 +210,9 @@ datasets = []
 names = ["Brent_prices", "ACWI_indexes", "Dow_Jones_indexes",
          "DXY_indexes", "FTSE_100_indexes", "MOEX_indexes", "RTS_indexes", "SPX_indexes"]
 
-all_data, test_data = prepare_data(names)
-#all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
-#test_data = pd.read_csv('TEST_DATA.csv', index_col = 0)
+#all_data, test_data = prepare_data(names)
+all_data = pd.read_csv('ALL_DATA.csv', index_col = 0)
+test_data = pd.read_csv('TEST_DATA.csv', index_col = 0)
 
 all_data['Brent_prices'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['Brent_prices'].to_numpy().reshape(1, all_data.shape[0])[0])
 all_data['MOEX_indexes'] = pd.Series(np.ones(len(all_data['Дата'])) / all_data['MOEX_indexes'].to_numpy().reshape(1, all_data.shape[0])[0])
@@ -235,8 +261,12 @@ params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver'
 params.append({'n_estimators' : [100, 125, 150, 175], 'max_depth' : [3, 7, 15], 'max_features' : ['auto', 'sqrt', 'log2']})
 #sklearn_forecasting(models, params, X, y)
 
-print(time_series_diff(X.transpose()[1]))
+forecasted_features_arima = arima_forecasting(X)
+print(forecasted_features_arima)
 
+#print(time_series_diff(X.transpose()[1]))
+#print(X)
+#print(X.transpose())
 #print(X)
 #print(y)
 #all_data.corr().to_csv("CORRELATION.csv")
