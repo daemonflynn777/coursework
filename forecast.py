@@ -203,6 +203,7 @@ def arima_forecasting(features):
         parameters = product(range(pacf_coef + 1), range(acf_coef + 1))
         parameters_list = list(parameters)
         model_score = model_score_best = q_best = p_best = 0 # Maybe use AIC later
+        forecasted_best = list(np.zeros(len(feature_test)))
         for params in parameters_list:
             print("Testing ARIMA (%d,%d,%d)" % (params[0], int_degree, params[1]))
             forecasted = []
@@ -221,11 +222,21 @@ def arima_forecasting(features):
                 model_score_best = model_score
                 p_best = params[0]
                 q_best = params[1]
+                forecasted_best = forecasted
         print("The best model by r2_score is ARIMA(%d,%d,%d) with r2_score of %f" % (p_best, int_degree, q_best, model_score_best))
+
+        fig = plt.figure(figsize = (8, 5), num = 'Predicted VS Real')
+        plt.plot(feature_test, color = 'orange', label = 'Real')
+        plt.plot(forecasted, color = 'purple', label = 'Predicted')
+        plt.legend()
+        plt.grid(linewidth = 1)
+        plt.title('Predicted VS Real', fontsize = 'xx-large')
+        plt.show()
+
         model = ARIMA(feature_forecast, order = (p_best, int_degree, q_best))
         model_fit = model.fit(disp = 0)
-        forecast = model_fit.forecast()
-        forecasted_features.append(forecast[0][0])
+        forecast = model_fit.forecast(steps = 2)
+        forecasted_features.append(forecast[0][1])
     print("\nAll features have been forecasted")
     return forecasted_features
 
