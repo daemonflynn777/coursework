@@ -17,6 +17,9 @@ from sklearn.metrics import r2_score
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from itertools import product
+from functools import reduce
+from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
+import warnings
 
 def prepare_data(data_names):
     for name in data_names:
@@ -81,9 +84,9 @@ def data_train_test(df):
     df_y = df.to_numpy()[ : , -1 : ].reshape(1, df.shape[0])
     return df_x, df_y[0]
 
-def xgb_forecasting(data_x, data_y):
+def xgb_forecasting(data_x, data_y, data_features, logfile):
     dtrain = xgb.DMatrix(data_x, label = data_y)
-    xgb_model = xgb.XGBRegressor(learning_rate = 0.1, nthread = -1, random_state = 0)
+    xgb_model = xgb.XGBRegressor(learning_rate = 0.1, verbosity = 0, nthread = -1, random_state = 0)
     cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
     xgb_gs = GridSearchCV(
              xgb_model,
@@ -99,39 +102,62 @@ def xgb_forecasting(data_x, data_y):
              n_jobs = -1,
              cv = cv_gen
              )
-    xgb_gs.fit(data_x[1 : ], data_y[1 : ])
+    xgb_gs.fit(data_x, data_y)
     print(xgb_gs.best_params_)
     print("r2 score",xgb_gs.best_score_)
-    y_pred = xgb_gs.best_estimator_.predict(data_x[ : 1])
+    y_pred = xgb_gs.best_estimator_.predict(data_features)
     #y_pred = xgb_gs.best_estimator_.predict(X_test[300].reshape(1, X_test.shape[1]))
-    print("Predicted", y_pred)
-    print("Real", data_y[ : 1])
+    #print("Predicted", y_pred)
+    #print("Real", data_y[ : 1])
     #print("Real", y_test[300])
+    print("\nXGBoost forecasted USD/RUB rate:", y_pred)
+    logfile.write("\nXGBoost forecasted USD/RUB rate: ")
+    logfile.write(str(y_pred))
 
 def feature_data(feature):
     return 0
 
-def sklearn_forecasting(mdls, prms, data_x, data_y):
+def sklearn_forecasting(mdls, prms, data_x, data_y, data_feature, logfile):
+    #with warnings.catch_warnings():
+    #    warnings.filterwarnings("ignore", category = ConvergenceWarning)
+    #    warnings.filterwarnings("ignore", category = FitFailedWarning)
+    #    warnings.filterwarnings("ignore", category = Warning)
     data_y = data_y.astype('float')
-    print(data_y)
+    #print(data_y)
     bst_params = []
     bst_score = []
     bst_estimator = []
+    bst_forecast = []
     cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
-    #for i in range(len(mdls)):
-    model_gs = GridSearchCV(mdls[5], prms[5], scoring = 'r2', n_jobs = -1, cv = cv_gen)
-    model_gs.fit(data_x[ : -1], data_y[ : -1])
-    bst_params.append(model_gs.best_params_)
-    bst_score.append(model_gs.best_score_)
-    bst_estimator.append(model_gs.best_estimator_)
+    for i in range(len(mdls)):
+        model_gs = GridSearchCV(mdls[i], prms[i], scoring = 'r2', n_jobs = -1, cv = cv_gen)
+        model_gs.fit(data_x, data_y)
+        bst_params.append(model_gs.best_params_)
+        bst_score.append(model_gs.best_score_)
+        bst_estimator.append(model_gs.best_estimator_)
+        bst_forecast.append(model_gs.best_estimator_.predict(data_feature)[0])
+    print("\nSKLearn models scores and forecasts:")
     print(bst_score)
+    print(bst_forecast)
+    print("SKLearn mean forecast across all models:", reduce(lambda a, b: a + b, bst_forecast)/len(bst_forecast))
 
+    logfile.write("\nSKLearn models scores and forecasts:\n")
+    for bst_s in bst_score:
+        logfile.write(str(bst_s) + " ")
+    logfile.write("\n")
+    for bst_f in bst_forecast:
+        logfile.write(str(bst_f) + " ")
+    logfile.write("\n")
+    logfile.write("SKLearn mean forecast across all models: ")
+    logfile.write(str(reduce(lambda a, b: a + b, bst_forecast)/len(bst_forecast)))
+    logfile.write("\n")
     return 0
 
 def time_series_diff(series):
     return np.array([series[i + 1] - series[i] for i in range(len(series) - 1)])
 
 def arima_forecasting(features):
+    warnings.simplefilter('ignore')
     forecasted_features = []
     features = np.transpose(features)
     for feature in features:
@@ -151,7 +177,7 @@ def arima_forecasting(features):
         adf_stat, adf_crit_val = adfuller(feature, regression = 'ctt')[0], adfuller(feature, regression = 'ctt')[4]["5%"]
         int_degree = 0
         while adf_stat >= adf_crit_val:
-            print(adf_stat, adf_crit_val)
+            print("\n", adf_stat, adf_crit_val)
 
             #fig = plt.figure(figsize = (8, 4))
             #ft = plt.plot(feature)
@@ -183,6 +209,7 @@ def arima_forecasting(features):
             for iter in range(len(feature_test)):
                 model = ARIMA(feature_train, order = (params[0], int_degree, params[1]))
                 model_fit = model.fit(disp = 0)
+                #forecast_step = model_fit.forecast(len(feature_test) - iter + 1)[0][0]
                 forecast_step = model_fit.forecast()[0]
                 forecasted.append(forecast_step)
                 #feature_train = np.array(list(feature_train).append(forecast_step))
@@ -199,7 +226,7 @@ def arima_forecasting(features):
         model_fit = model.fit(disp = 0)
         forecast = model_fit.forecast()
         forecasted_features.append(forecast[0][0])
-    print("All features have been forecasted")
+    print("\nAll features have been forecasted")
     return forecasted_features
 
 
@@ -228,7 +255,18 @@ test_data['RTS_indexes'] = pd.Series(np.ones(len(test_data['Дата'])) / test_
 X, y = data_train_test(all_data)
 X_test, y_test = data_train_test(test_data)
 
-#xgb_forecasting(X, y)
+X = X[99 : -230, : ]
+y = y[99 : -230]
+
+forecast_report = open("Forecast_report.txt", "w")
+
+forecasted_features_arima = arima_forecasting(X)
+#forecasted_features_arima = [0.009436234227107878, 51.48247226605893, 15076.90028526149, 80.65615687116073, 6300.875627816384, 0.0007695923111092246, 0.0007730595155224728, 1627.4914738510302]
+print("Forecasted future features:", forecasted_features_arima)
+forecast_report.write("Forecasted future features: ")
+for ffa in forecasted_features_arima:
+    forecast_report.write(str(ffa) + " ")
+forecast_report.write("\n")
 
 models = []
 models.append(LinearRegression(copy_X = True, n_jobs = -1))
@@ -236,8 +274,8 @@ models.append(LinearRegression(copy_X = True, n_jobs = -1))
 models.append(Ridge(copy_X = True, random_state = 0))
 models.append(Lasso(copy_X = True, random_state = 0))
 models.append(KNeighborsRegressor(n_jobs = -1))
-models.append(MLPRegressor(hidden_layer_sizes = (50, 50, 50), random_state = 0))
-models.append(RandomForestRegressor(n_jobs = -1, random_state = 0))
+#models.append(MLPRegressor(hidden_layer_sizes = (50, 50, 50), random_state = 0))
+models.append(RandomForestRegressor(n_jobs = -1, random_state = 0, verbose = 0))
 
 
 #'l1_ratio' : np.linspace(0.0, 1.0, num = 5)
@@ -250,19 +288,23 @@ params.append({'alpha' : np.linspace(0.1, 2.0, num = 10), 'fit_intercept' : [Tru
 params.append({'alpha' : np.linspace(1.0, 5.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'precompute' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5)})
 params.append({'n_neighbors' : [5, 10, 15, 20], 'weights' : ['uniform', 'distance'], 'algorithm' : ['ball_tree', 'kd_tree', 'brute'], 'leaf_size' : [30, 45, 60, 75, 90], 'p' : np.linspace(1, 5, num = 6)})
 
+###
 #params.append({'activation' : ['logistic'], 'solver' : ['lbfgs'], 'alpha' : [0.00005, 0.0001, 0.0002], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
 #               'early_stopping' : [True], 'validation_fraction' : np.linspace(0.1, 0.3, num = 5)})
-params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver' : ['adam'], 'learning_rate' : ['constant'],
-               'learning_rate_init' : np.linspace(0.0005, 0.002, num = 3), 'max_iter' : [1000, 5000, 10000]})
+ #params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver' : ['adam'], 'learning_rate' : ['constant'],
+ #               'learning_rate_init' : np.linspace(0.0005, 0.002, num = 3), 'max_iter' : [1000, 5000, 10000]})
 #'beta_1' : np.linspace(0.7, 1.0, num = 5, endpoint = False), 'beta_2' : np.linspace(0.95, 1.0, num = 5)
 #'power_t' : np.linspace(0.45, 0.55, num = 3),
 #'momentum' : np.linspace(0.85, 0.95, num = 5), 'nesterovs_momentum' : [True, False]
+###
 
 params.append({'n_estimators' : [100, 125, 150, 175], 'max_depth' : [3, 7, 15], 'max_features' : ['auto', 'sqrt', 'log2']})
-#sklearn_forecasting(models, params, X, y)
 
-forecasted_features_arima = arima_forecasting(X)
-print(forecasted_features_arima)
+sklearn_forecasting(models, params, X, y, np.array(forecasted_features_arima).reshape(1, len(forecasted_features_arima)), forecast_report)
+
+xgb_forecasting(X, y, forecasted_features_arima, forecast_report)
+
+forecast_report.close()
 
 #print(time_series_diff(X.transpose()[1]))
 #print(X)
