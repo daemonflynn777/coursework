@@ -28,8 +28,7 @@ def prepare_data(data_names):
     datasets.append(pd.read_csv("datasets/" + name + ".csv").rename(columns = {'Цена': name}).drop(['Откр.', 'Макс.', 'Мин.', 'Изм. %'], axis=1))
     for i in range(len(datasets)):
         clmn = datasets[i].columns.tolist()
-        start_date_index = list(datasets[i]['Дата']).index('01.10.2010') # previous date 01.02.2010
-        #mid_date_index = list(datasets[i]['Дата']).index('01.10.2014') # previous date 01.02.2014
+        start_date_index = list(datasets[i]['Дата']).index('01.10.2010')
         end_date_index = list(datasets[i]['Дата']).index('01.10.2018')
         data = {clmn[0]: datasets[i][clmn[0]][end_date_index : start_date_index + 1], clmn[1]: datasets[i][clmn[1]][end_date_index : start_date_index + 1]}
         datasets[i] = pd.DataFrame(data)
@@ -57,7 +56,7 @@ def visualise_data(data):
     print(data.head())
     for name in names:
         ax.append(fig.add_subplot(2, 5, names.index(name) + 1, title = name))
-        sns.lineplot(data = data[name], ax = ax[names.index(name)]) # через pd.reaplace()
+        sns.lineplot(data = data[name], ax = ax[names.index(name)])
     plt.show()
     fig.savefig("Visualisation.png")
     fig = plt.figure(figsize = (12 ,9), num = 'Correlation heatmap')
@@ -98,7 +97,7 @@ def xgb_forecasting(data_x, data_y, data_features, logfile):
                 'reg_alpha': np.linspace(0.0001, 0.001, num = 3),
                 'reg_lambda': np.linspace(0.0001, 0.001, num = 3)
              },
-             scoring = 'r2', # neg_mean_squared_error
+             scoring = 'r2',
              n_jobs = -1,
              cv = cv_gen
              )
@@ -106,28 +105,49 @@ def xgb_forecasting(data_x, data_y, data_features, logfile):
     print(xgb_gs.best_params_)
     print("r2 score",xgb_gs.best_score_)
     y_pred = xgb_gs.best_estimator_.predict(data_features)
-    #y_pred = xgb_gs.best_estimator_.predict(X_test[300].reshape(1, X_test.shape[1]))
-    #print("Predicted", y_pred)
-    #print("Real", data_y[ : 1])
-    #print("Real", y_test[300])
     print("\nXGBoost forecasted USD/RUB rate:", y_pred)
     logfile.write("\nXGBoost forecasted USD/RUB rate: ")
     logfile.write(str(y_pred))
 
-def feature_data(feature):
-    return 0
+def feature_data(features, mdls, prms, logfile):
+    features = np.transpose(features)
+    forecasted = []
+    for feature in features:
+        #fig = plt.figure(figsize = (8, 8), num = 'ACF and PACF')
+        #ax = []
+        #ax.append(fig.add_subplot(2, 1, 1))
+        #plot_acf(feature, ax = ax[0])
+        #ax.append(fig.add_subplot(2, 1, 2))
+        #plot_pacf(feature, ax = ax[1])
+        #plt.show()
+        #plt.show()
+        #pacf_coef = int(input("Enter PACF coefficent: ")) # AR part of time series, parameter "p"
+
+        time_delta = 14
+        X = []
+        y = []
+        plt.show()
+        for i in range(len(feature) - time_delta):
+            X.append(feature[i : i + time_delta])
+            y.append(feature[i + time_delta])
+        X = np.array(X)
+        print(X)
+        y = np.array(y)
+        for_forecast = np.array(feature[-time_delta : ]).reshape(1, time_delta)
+        forecasted.append(sklearn_forecasting(mdls, prms, X, y, for_forecast, logfile))
+    logfile.write("\nMean SKLearn forecast for all features:\n")
+    for frcst in forecasted:
+        logfile.write(str(frcst) + " ")
+    logfile.write("\n")
+    return forecasted
 
 def sklearn_forecasting(mdls, prms, data_x, data_y, data_feature, logfile):
-    #with warnings.catch_warnings():
-    #    warnings.filterwarnings("ignore", category = ConvergenceWarning)
-    #    warnings.filterwarnings("ignore", category = FitFailedWarning)
-    #    warnings.filterwarnings("ignore", category = Warning)
     data_y = data_y.astype('float')
-    #print(data_y)
     bst_params = []
     bst_score = []
     bst_estimator = []
     bst_forecast = []
+    print(data_feature)
     cv_gen = ShuffleSplit(n_splits = 9, test_size = 0.7, random_state = 0)
     for i in range(len(mdls)):
         model_gs = GridSearchCV(mdls[i], prms[i], scoring = 'r2', n_jobs = -1, cv = cv_gen)
@@ -151,7 +171,7 @@ def sklearn_forecasting(mdls, prms, data_x, data_y, data_feature, logfile):
     logfile.write("SKLearn mean forecast across all models: ")
     logfile.write(str(reduce(lambda a, b: a + b, bst_forecast)/len(bst_forecast)))
     logfile.write("\n")
-    return 0
+    return reduce(lambda a, b: a + b, bst_forecast)/len(bst_forecast)
 
 def time_series_diff(series):
     return np.array([series[i + 1] - series[i] for i in range(len(series) - 1)])
@@ -161,7 +181,6 @@ def arima_forecasting(features):
     forecasted_features = []
     features = np.transpose(features)
     for feature in features:
-        #print(feature)
         feature_len = len(feature)
         cv_split = int(feature_len*0.85)
         feature_train = feature[ : cv_split]
@@ -186,7 +205,6 @@ def arima_forecasting(features):
             #plt.title('Feature', fontsize = 'xx-large')
             #lt.show()
 
-            #print(len(feature))
             feature = np.diff(feature)
             adf_stat, adf_crit_val = adfuller(feature, regression = 'ctt')[0], adfuller(feature, regression = 'ctt')[4]["5%"]
             int_degree += 1
@@ -213,8 +231,6 @@ def arima_forecasting(features):
                 #forecast_step = model_fit.forecast(len(feature_test) - iter + 1)[0][0]
                 forecast_step = model_fit.forecast()[0]
                 forecasted.append(forecast_step)
-                #feature_train = np.array(list(feature_train).append(forecast_step))
-                #print(feature_train)
                 feature_train = np.append(feature_train, feature_test[iter])
             model_score = r2_score(feature_test, forecasted)
             print(model_score)
@@ -271,55 +287,44 @@ y = y[99 : -230]
 
 forecast_report = open("Forecast_report.txt", "w")
 
-forecasted_features_arima = arima_forecasting(X)
-#forecasted_features_arima = [0.009436234227107878, 51.48247226605893, 15076.90028526149, 80.65615687116073, 6300.875627816384, 0.0007695923111092246, 0.0007730595155224728, 1627.4914738510302]
-print("Forecasted future features:", forecasted_features_arima)
-forecast_report.write("Forecasted future features: ")
+#forecasted_features_arima = arima_forecasting(X)
+forecasted_features_arima = [0.009436234227107878, 51.48247226605893, 15076.90028526149, 80.65615687116073, 6300.875627816384, 0.0007695923111092246, 0.0007730595155224728, 1627.4914738510302]
+print("ARIMA forecasted future features:", forecasted_features_arima)
+forecast_report.write("ARIMA forecasted future features: ")
 for ffa in forecasted_features_arima:
     forecast_report.write(str(ffa) + " ")
 forecast_report.write("\n")
 
 models = []
 models.append(LinearRegression(copy_X = True, n_jobs = -1))
-#models.append(LogisticRegression(n_jobs = -1, class_weight = 'balanced', random_state = 0))
 models.append(Ridge(copy_X = True, random_state = 0))
 models.append(Lasso(copy_X = True, random_state = 0))
 models.append(KNeighborsRegressor(n_jobs = -1))
-#models.append(MLPRegressor(hidden_layer_sizes = (50, 50, 50), random_state = 0))
 models.append(RandomForestRegressor(n_jobs = -1, random_state = 0, verbose = 0))
 
-
-#'l1_ratio' : np.linspace(0.0, 1.0, num = 5)
 params = []
 params.append({'fit_intercept' : [True, False], 'normalize' : [True, False]}) # params for Linear Regression
-#params.append({'penalty' : ['l2'], 'dual' : [False], 'tol' : np.linspace(0.00001, 0.0001, num = 5), 'C' : np.linspace(0.1, 2.0, num = 10),
-#               'fit_intercept' : [False], 'solver' : ['newton-cg', 'lbfgs', 'sag'], 'max_iter': [100, 125, 150, 175, 200], 'multi_class' : ['auto', 'ovr', 'multinominal']})
 params.append({'alpha' : np.linspace(0.1, 2.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
                'solver' : ['auto', 'svd', 'cholesky', 'lsqr', 'sparce_cg', 'sag', 'saga']})
 params.append({'alpha' : np.linspace(1.0, 5.0, num = 10), 'fit_intercept' : [True, False], 'normalize' : [True, False], 'precompute' : [True, False], 'tol' : np.linspace(0.00001, 0.0001, num = 5)})
 params.append({'n_neighbors' : [5, 10, 15, 20], 'weights' : ['uniform', 'distance'], 'algorithm' : ['ball_tree', 'kd_tree', 'brute'], 'leaf_size' : [30, 45, 60, 75, 90], 'p' : np.linspace(1, 5, num = 6)})
-
-###
-#params.append({'activation' : ['logistic'], 'solver' : ['lbfgs'], 'alpha' : [0.00005, 0.0001, 0.0002], 'tol' : np.linspace(0.00001, 0.0001, num = 5),
-#               'early_stopping' : [True], 'validation_fraction' : np.linspace(0.1, 0.3, num = 5)})
- #params.append({'activation' : ['identity', 'logistic', 'tanh', 'relu'], 'solver' : ['adam'], 'learning_rate' : ['constant'],
- #               'learning_rate_init' : np.linspace(0.0005, 0.002, num = 3), 'max_iter' : [1000, 5000, 10000]})
-#'beta_1' : np.linspace(0.7, 1.0, num = 5, endpoint = False), 'beta_2' : np.linspace(0.95, 1.0, num = 5)
-#'power_t' : np.linspace(0.45, 0.55, num = 3),
-#'momentum' : np.linspace(0.85, 0.95, num = 5), 'nesterovs_momentum' : [True, False]
-###
-
 params.append({'n_estimators' : [100, 125, 150, 175], 'max_depth' : [3, 7, 15], 'max_features' : ['auto', 'sqrt', 'log2']})
 
-sklearn_forecasting(models, params, X, y, np.array(forecasted_features_arima).reshape(1, len(forecasted_features_arima)), forecast_report)
+forecasted_features_sklearn = feature_data(X, models, params, forecast_report)
+print("SKLearn forecasted future features:", forecasted_features_sklearn)
+forecast_report.write("SKLearn forecasted future features: ")
+for ffa in forecasted_features_sklearn:
+    forecast_report.write(str(ffa) + " ")
+forecast_report.write("\n")
 
-xgb_forecasting(X, y, forecasted_features_arima, forecast_report)
+#ARIMA predicted features:
+#sklearn_forecasting(models, params, X, y, np.array(forecasted_features_arima).reshape(1, len(forecasted_features_arima)), forecast_report)
+
+#xgb_forecasting(X, y, forecasted_features_arima, forecast_report)
+
+#SKLearn predicted features
+sklearn_forecasting(models, params, X, y, np.array(forecasted_features_sklearn).reshape(1, len(forecasted_features_sklearn)), forecast_report)
+
+xgb_forecasting(X, y, forecasted_features_sklearn, forecast_report)
 
 forecast_report.close()
-
-#print(time_series_diff(X.transpose()[1]))
-#print(X)
-#print(X.transpose())
-#print(X)
-#print(y)
-#all_data.corr().to_csv("CORRELATION.csv")
